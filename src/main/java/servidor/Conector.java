@@ -261,33 +261,44 @@ public class Conector {
 	 * @return boolean
 	 */
 	public boolean loguearUsuario(final PaqueteUsuario user) {
-		ResultSet result = null;
-		try {
-            // Busco usuario y contraseña
-            PreparedStatement st = connect
-            		.prepareStatement("SELECT * FROM registro WHERE usuario = ? AND password = ? ");
-            st.setString(1, user.getUsername());
-            st.setString(2, user.getPassword());
-            result = st.executeQuery();
 
-            // Si existe, inicio sesion
-            if (result.next()) {
-            	Servidor.getLog()
-                        .append("El usuario " + user.getUsername() + " ha iniciado sesión." + System.lineSeparator());
-            	return true;
-            }
-
-            // Si no existe, informo y devuelvo false
-            Servidor.getLog().append("El usuario " + user.getUsername()
-                    + " ha realizado un intento fallido de inicio de sesión." + System.lineSeparator());
-            return false;
-
-		} catch (SQLException e) {
-            Servidor.getLog()
-                 .append("El usuario " + user.getUsername() + " fallo al iniciar sesión." + System.lineSeparator());
-            return false;
-		}
-
+       Configuration conf = new Configuration();
+       conf.configure("cfg.xml");
+       
+       SessionFactory factory = conf.buildSessionFactory();
+       Session session = factory.openSession();
+       
+       CriteriaBuilder cb = session.getCriteriaBuilder();
+       CriteriaQuery<PaqueteUsuario> criteriaQuery = cb.createQuery(PaqueteUsuario.class);
+	   Root<PaqueteUsuario> root = criteriaQuery.from(PaqueteUsuario.class);//le paso la entidad que necesito
+      //busca en la tabla que el usser sea igual y la contra tmb
+	   criteriaQuery.select(root).where(cb.equal(root.get("username"), user.getUsername()), cb.equal(root.get("password") , user.getPassword()));
+	   Transaction tx = session.beginTransaction();
+	   if(!session.createQuery(criteriaQuery).getResultList().isEmpty()){
+		   try {
+			tx.commit();
+			Servidor.getLog()
+                  .append("El usuario " + user.getUsername() + " ha iniciado sesión." + System.lineSeparator());
+		   } catch (HibernateException e) {
+ 				if (tx != null)
+ 					tx.rollback();//si hay error se descarta todo
+ 				e.printStackTrace();
+ 				
+ 				session.close();
+ 				factory.close();
+ 				Servidor.getLog().append("El usuario " + user.getUsername()
+ 				      + " fallo al iniciar sesión." + System.lineSeparator());
+                return false;			
+		     }
+	   } else {
+		   Servidor.getLog().append("El usuario " + user.getUsername()
+                + " ha realizado un intento fallido de inicio de sesión." + System.lineSeparator());
+           return false;
+         }
+	   
+		session.close();
+		factory.close();
+		return true;
 	}
 
     /**
