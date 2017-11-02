@@ -10,6 +10,16 @@ import java.util.Random;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.persistence.criteria.CriteriaBuilder;
+import javax.persistence.criteria.CriteriaQuery;
+import javax.persistence.criteria.Root;
+
+import org.hibernate.HibernateException;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.hibernate.Transaction;
+import org.hibernate.cfg.Configuration;
+
 import mensajeria.PaquetePersonaje;
 import mensajeria.PaqueteUsuario;
 
@@ -77,32 +87,50 @@ public class Conector {
 	 * @return boolean
 	 */
 	public boolean registrarUsuario(final PaqueteUsuario user) {
-		ResultSet result = null;
-		try {
-            PreparedStatement st1 = connect.prepareStatement("SELECT * FROM registro WHERE usuario= ? ");
-            st1.setString(1, user.getUsername());
-            result = st1.executeQuery();
-
-            if (!result.next()) {
-
-            	PreparedStatement st = connect
-                        .prepareStatement("INSERT INTO registro (usuario, password, idPersonaje) VALUES (?,?,?)");
-            	st.setString(INDICE1, user.getUsername());
-            	st.setString(INDICE2, user.getPassword());
-            	st.setInt(INDICE3, user.getIdPj());
-            	st.execute();
-      Servidor.getLog().append("El usuario " + user.getUsername() + " se ha registrado." + System.lineSeparator());
-            	return true;
-            } else {
-            	Servidor.getLog().append(
-                        "El usuario " + user.getUsername() + " ya se encuentra en uso." + System.lineSeparator());
-            	return false;
-            }
-		} catch (SQLException ex) {
-      Servidor.getLog().append("Eror al intentar registrar el usuario " + user.getUsername() + System.lineSeparator());
-            System.err.println(ex.getMessage());
-            return false;
-		}
+		//configuracion de hibernate, le paso el archivo cfg.xml
+		Configuration config = new Configuration();
+ 		config.configure("cfg.xml");
+ 		
+ 		SessionFactory factory = config.buildSessionFactory();
+ 		Session session = factory.openSession();
+ 		
+ 		//utilizo criteria para las consultas
+ 		CriteriaBuilder criteriaBuilder = session.getCriteriaBuilder();
+ 		CriteriaQuery<PaqueteUsuario> criteriaQuery = criteriaBuilder.createQuery(PaqueteUsuario.class);
+ 		Root<PaqueteUsuario> root = criteriaQuery.from(PaqueteUsuario.class);//le paso la entidad que necesito
+ 		System.out.println(session.createQuery(criteriaQuery).getResultList().toString());
+ 		//de la tabla que le pase, busca si existe el nombre de usuario que ingresaron
+ 		criteriaQuery.select(root).where(criteriaBuilder.equal(root.get("username"), user.getUsername()));
+ 		//System.out.println(session.createQuery(criteriaQuery).getResultList());
+ 		
+ 		//si la consulta genera tabla vacia, es porque no existe el usuario y puede crearse
+ 		if(session.createQuery(criteriaQuery).getResultList().isEmpty()) {
+ 			Transaction tx = session.beginTransaction();
+ 			try{
+ 				session.saveOrUpdate(user);
+ 				tx.commit();
+ 				
+ 			} catch (HibernateException e) {
+ 				if (tx != null)
+ 					tx.rollback();//si hay error se descarta todo
+ 				e.printStackTrace();
+ 				
+ 				session.close();
+ 				factory.close();
+ 				Servidor.getLog().append("Eror al intentar registrar el usuario " + user.getUsername() + System.lineSeparator());
+ 				return false;
+ 			}
+ 		} else {//si la consulta devuelve un campo, es porque el usuario ya existe
+ 			session.close();
+ 			factory.close();
+ 			Servidor.getLog().append("El usuario " + user.getUsername() + " ya se encuentra en uso." + System.lineSeparator());
+ 			return false;
+ 		}
+ 		
+ 		session.close();
+ 		factory.close();
+ 		Servidor.getLog().append("El usuario " + user.getUsername() + " se ha registrado." + System.lineSeparator());
+ 		return true;
 
 	}
 
