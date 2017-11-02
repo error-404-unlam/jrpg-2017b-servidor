@@ -463,28 +463,47 @@ public class Conector {
 	 * @return Objeto de la clase PaqueteUsuario
 	 */
 	public PaqueteUsuario getUsuario(final String usuario) {
-		ResultSet result = null;
-		PreparedStatement st;
+		
+		Configuration conf = new Configuration(); //estas 3 lineas deben ir en metodo conect
+		conf.configure("cfg.xml");
+		
+		SessionFactory factory = conf.buildSessionFactory();
+		Session session = factory.openSession();
+		
+		CriteriaBuilder cb = session.getCriteriaBuilder();
+		CriteriaQuery<PaqueteUsuario> criteriaQuery = cb.createQuery(PaqueteUsuario.class);
+		   Root<PaqueteUsuario> root = criteriaQuery.from(PaqueteUsuario.class);//le paso la entidad que necesito
+	      //busca en la tabla que el usser sea igual y la contra tmb
+		  criteriaQuery.select(root).where(cb.equal(root.get("username"), usuario));
+		   Transaction tx = session.beginTransaction();
+		   
+		  if(!session.createQuery(criteriaQuery).getResultList().isEmpty()){
+			  try {
+				  tx.commit(); //ojo nro magico
+                  String password=session.createQuery(criteriaQuery).getResultList().get(0).getPassword();
+                  int idPersonaje = session.createQuery(criteriaQuery).getResultList().get(0).getIdPj();
+                  
+                  PaqueteUsuario paqueteUsuario = new PaqueteUsuario();
+                  paqueteUsuario.setUsername(usuario);
+                  paqueteUsuario.setPassword(password);
+                  paqueteUsuario.setIdPj(idPersonaje);
+                  
+                session.close();
+	 			factory.close();
+                return paqueteUsuario;
+			  }catch (Exception e) {
+				  if (tx != null)
+	 					tx.rollback();//si hay error se descarta todo
+	 				e.printStackTrace();
 
-		try {
-            st = connect.prepareStatement("SELECT * FROM registro WHERE usuario = ?");
-            st.setString(1, usuario);
-            result = st.executeQuery();
-
-            String password = result.getString("password");
-            int idPersonaje = result.getInt("idPersonaje");
-
-            PaqueteUsuario paqueteUsuario = new PaqueteUsuario();
-            paqueteUsuario.setUsername(usuario);
-            paqueteUsuario.setPassword(password);
-            paqueteUsuario.setIdPj(idPersonaje);
-
-            return paqueteUsuario;
-		} catch (SQLException e) {
-            Servidor.getLog().append("Fallo al intentar recuperar el usuario " + usuario + System.lineSeparator());
-            Servidor.getLog().append(e.getMessage() + System.lineSeparator());
-		}
-
+				  Servidor.getLog().append("Fallo al intentar recuperar el usuario " + usuario + System.lineSeparator());
+		            Servidor.getLog().append(e.getMessage() + System.lineSeparator());
+			  }
+		  } else {
+			  System.out.println("algo malo paso aqui :O");
+		  }
+		session.close();
+		factory.close();
 		return new PaqueteUsuario();
 	}
 
